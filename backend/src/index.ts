@@ -1,6 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { errorHandler } from './api/middleware/error.middleware';
 import transactionsRouter from './api/routes/transactions.route';
 
 dotenv.config();
@@ -20,6 +21,9 @@ app.get('/health', (req: Request, res: Response) => {
 app.get('/', (req: Request, res: Response) => {
   res.send('AnchorPoint Backend API is running.');
 });
+
+// Global error handling middleware (must be last)
+app.use(errorHandler);
 
 /* istanbul ignore next */
 if (process.env.NODE_ENV !== 'test') {
