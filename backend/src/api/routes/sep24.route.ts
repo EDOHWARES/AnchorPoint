@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
+import {
+  createDepositInteractiveUrl,
+  createWithdrawInteractiveUrl,
+  isSupportedAsset,
+  normalizeAssetCode,
+  SUPPORTED_ASSETS
+} from '../../services/kyc.service';
 
 const router = Router();
-
-// Supported assets for deposit
-const SUPPORTED_ASSETS = ['USDC', 'USD', 'BTC', 'ETH'];
 
 interface DepositRequest {
   asset_code: string;
@@ -35,7 +39,8 @@ router.post('/transactions/deposit/interactive', (req: Request, res: Response) =
   }
 
   // Validate asset
-  if (!SUPPORTED_ASSETS.includes(asset_code.toUpperCase())) {
+  const normalizedAssetCode = normalizeAssetCode(asset_code);
+  if (!isSupportedAsset(normalizedAssetCode)) {
     return res.status(400).json({
       error: `Asset ${asset_code} is not supported. Supported assets: ${SUPPORTED_ASSETS.join(', ')}`
     });
@@ -43,20 +48,61 @@ router.post('/transactions/deposit/interactive', (req: Request, res: Response) =
 
   // Generate unique transaction ID
   const transactionId = randomUUID();
-
-  // Build redirect URL with transaction parameters
   const baseUrl = process.env.INTERACTIVE_URL || 'http://localhost:3000';
-  const redirectUrl = new URL('/kyc-deposit', baseUrl);
-  redirectUrl.searchParams.append('transaction_id', transactionId);
-  redirectUrl.searchParams.append('asset_code', asset_code);
-  if (account) redirectUrl.searchParams.append('account', account);
-  if (amount) redirectUrl.searchParams.append('amount', amount);
-  redirectUrl.searchParams.append('lang', lang);
+  const redirectUrl = createDepositInteractiveUrl({
+    baseUrl,
+    transactionId,
+    assetCode: normalizedAssetCode,
+    account,
+    amount,
+    lang
+  });
 
   // Return interactive response
   const response: DepositResponse = {
     type: 'interactive_customer_info_needed',
     url: redirectUrl.toString(),
+    id: transactionId
+  };
+
+  res.json(response);
+});
+
+/**
+ * POST /transactions/withdraw/interactive
+ * SEP-24 Interactive Withdraw Endpoint
+ * Returns a URL for the user to complete KYC/Withdraw
+ */
+router.post('/transactions/withdraw/interactive', (req: Request, res: Response) => {
+  const { asset_code, account, amount, lang = 'en' }: DepositRequest = req.body;
+
+  if (!asset_code) {
+    return res.status(400).json({
+      error: 'asset_code is required'
+    });
+  }
+
+  const normalizedAssetCode = normalizeAssetCode(asset_code);
+  if (!isSupportedAsset(normalizedAssetCode)) {
+    return res.status(400).json({
+      error: `Asset ${asset_code} is not supported. Supported assets: ${SUPPORTED_ASSETS.join(', ')}`
+    });
+  }
+
+  const transactionId = randomUUID();
+  const baseUrl = process.env.INTERACTIVE_URL || 'http://localhost:3000';
+  const redirectUrl = createWithdrawInteractiveUrl({
+    baseUrl,
+    transactionId,
+    assetCode: normalizedAssetCode,
+    account,
+    amount,
+    lang
+  });
+
+  const response: DepositResponse = {
+    type: 'interactive_customer_info_needed',
+    url: redirectUrl,
     id: transactionId
   };
 
